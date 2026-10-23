@@ -1,0 +1,564 @@
+// Jornada de Impacto — modelo de dados (MySQL 8)
+//
+// Convenções:
+// - Todo conteúdo de projeto pertence a uma organização (Project.organizationId).
+// - A jornada é armazenada em tabelas estruturadas; JSON é usado apenas para
+//   estado transitório da conversa e para o conteúdo das propostas da IA.
+// - As tabelas user/session/account/verification seguem o formato esperado
+//   pelo Better Auth.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ---------------------------------------------------------------------------
+// Autenticação (Better Auth)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String        @id
+  name          String
+  email         String        @unique
+  emailVerified Boolean       @default(false)
+  image         String?       @db.Text
+  /// Papel global. PLATFORM_ADMIN = equipe gestora da plataforma (BTG Soma).
+  platformRole  PlatformRole?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  sessions    Session[]
+  accounts    Account[]
+  memberships OrganizationMember[]
+
+  approvedProposals JourneyProposal[]      @relation("ProposalDecidedBy")
+  stageApprovals    JourneyStageApproval[]
+  journeyMessages   JourneyMessage[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?  @db.Text
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------------------------------------------------------------------------
+// Organizações e acesso
+// ---------------------------------------------------------------------------
+
+enum PlatformRole {
+  PLATFORM_ADMIN
+}
+
+enum OrganizationRole {
+  ORGANIZATION_ADMIN
+  ORGANIZATION_MEMBER
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  /// Marca organizações criadas pelo seed de demonstração.
+  isDemo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  OrganizationMember[]
+  projects Project[]
+
+  @@map("organization")
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrganizationRole @default(ORGANIZATION_MEMBER)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("organization_member")
+}
+
+// ---------------------------------------------------------------------------
+// Projeto
+// ---------------------------------------------------------------------------
+
+enum ProjectArea {
+  EDUCACAO
+  CULTURA
+  ESPORTE
+  MEIO_AMBIENTE
+  INCLUSAO_PRODUTIVA
+  OUTRA
+}
+
+enum JourneyStage {
+  CONTEXT
+  ACTIVITIES
+  OUTCOMES
+  IMPACT
+  EVIDENCE_PLAN
+}
+
+enum JourneyStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  area           ProjectArea
+  /// Descrição livre quando area = OUTRA.
+  areaOther      String?
+  targetAudience String        @db.Text
+  durationMonths Int
+  startDate      DateTime?     @db.Date
+  problem        String        @db.Text
+  /// Campo legado: não é mais pedido no cadastro (pode ser nulo).
+  strategy       String?       @db.Text
+  journeyStatus  JourneyStatus @default(NOT_STARTED)
+  currentStage   JourneyStage  @default(CONTEXT)
+  isDemo         Boolean       @default(false)
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  territories       ProjectTerritory[]
+  stageApprovals    JourneyStageApproval[]
+  activities        Activity[]
+  outcomes          ExpectedOutcome[]
+  impact            LongTermImpact?
+  evidencePlanItems EvidencePlanItem[]
+  conversation      JourneyConversation?
+  proposals         JourneyProposal[]
+  aiUsage           AiUsage[]
+
+  @@index([organizationId])
+  @@index([organizationId, area])
+  @@map("project")
+}
+
+model ProjectTerritory {
+  id        String @id @default(cuid())
+  projectId String
+  city      String
+  /// Sigla da UF (ex.: MG).
+  state     String @db.Char(2)
+  order     Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([state])
+  @@map("project_territory")
+}
+
+/// Registro de aprovação de cada etapa da jornada (presença = etapa aprovada).
+model JourneyStageApproval {
+  id           String       @id @default(cuid())
+  projectId    String
+  stage        JourneyStage
+  approvedAt   DateTime     @default(now())
+  approvedById String?
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvedBy User?   @relation(fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, stage])
+  @@map("journey_stage_approval")
+}
+
+// ---------------------------------------------------------------------------
+// Jornada de Impacto
+// ---------------------------------------------------------------------------
+
+enum ApprovalStatus {
+  DRAFT
+  APPROVED
+}
+
+model Activity {
+  id             String         @id @default(cuid())
+  projectId      String
+  description    String         @db.Text
+  order          Int
+  approvalStatus ApprovalStatus @default(DRAFT)
+  approvedAt     DateTime?
+  approvedById   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  target     ActivityTarget?
+  indicators ActivityIndicator[]
+  evidences  ActivityEvidence[]
+  outcomes   OutcomeActivity[]
+  planItems  EvidencePlanItem[]
+
+  @@index([projectId, order])
+  @@map("activity")
+}
+
+model ActivityTarget {
+  id             String   @id @default(cuid())
+  activityId     String   @unique
+  /// Meta técnica de realização (quantidade, público e prazo em texto livre).
+  description    String   @db.Text
+  /// Prazo em texto livre (ex.: "até o 6º mês"); null = a definir.
+  deadline       String?
+  quantity       Decimal? @db.Decimal(12, 2)
+  unit           String?
+  /// Duração da atividade em meses; null = a definir. Nunca maior que a do projeto.
+  durationMonths Int?
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@map("activity_target")
+}
+
+model ActivityIndicator {
+  id          String  @id @default(cuid())
+  activityId  String
+  name        String  @db.Text
+  explanation String? @db.Text
+  order       Int     @default(0)
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+  @@map("activity_indicator")
+}
+
+model ActivityEvidence {
+  id          String @id @default(cuid())
+  activityId  String
+  /// Meio de verificação.
+  description String @db.Text
+  order       Int    @default(0)
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+  @@map("activity_evidence")
+}
+
+model ExpectedOutcome {
+  id             String         @id @default(cuid())
+  projectId      String
+  /// Resultado / mudança esperada no público-alvo ou comunidade.
+  description    String         @db.Text
+  /// Meta; null enquanto ainda não foi definida.
+  target         String?        @db.Text
+  order          Int
+  approvalStatus ApprovalStatus @default(DRAFT)
+  approvedAt     DateTime?
+  approvedById   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  project    Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activities OutcomeActivity[]
+  indicators OutcomeIndicator[]
+  evidences  OutcomeEvidence[]
+  planItems  EvidencePlanItem[]
+
+  @@index([projectId, order])
+  @@map("expected_outcome")
+}
+
+/// Relação N:N entre resultados esperados e as atividades que os sustentam.
+model OutcomeActivity {
+  outcomeId  String
+  activityId String
+
+  outcome  ExpectedOutcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  activity Activity        @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@id([outcomeId, activityId])
+  @@index([activityId])
+  @@map("outcome_activity")
+}
+
+model OutcomeIndicator {
+  id          String  @id @default(cuid())
+  outcomeId   String
+  name        String  @db.Text
+  explanation String? @db.Text
+  order       Int     @default(0)
+
+  outcome ExpectedOutcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+
+  @@index([outcomeId])
+  @@map("outcome_indicator")
+}
+
+model OutcomeEvidence {
+  id          String @id @default(cuid())
+  outcomeId   String
+  description String @db.Text
+  order       Int    @default(0)
+
+  outcome ExpectedOutcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+
+  @@index([outcomeId])
+  @@map("outcome_evidence")
+}
+
+enum ImpactFollowUpOption {
+  VISION_ONLY
+  FOLLOW_UP_CHANGE
+  FUTURE_EVALUATION
+}
+
+model LongTermImpact {
+  id             String                @id @default(cuid())
+  projectId      String                @unique
+  statement      String                @db.Text
+  /// null enquanto a forma de acompanhamento ainda não foi escolhida.
+  followUpOption ImpactFollowUpOption?
+  approvalStatus ApprovalStatus        @default(DRAFT)
+  approvedAt     DateTime?
+  approvedById   String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  followUps ImpactFollowUp[]
+  planItems EvidencePlanItem[]
+
+  @@map("long_term_impact")
+}
+
+model ImpactFollowUp {
+  id             String  @id @default(cuid())
+  impactId       String
+  /// Mudança acompanhada ou objeto da avaliação futura.
+  description    String  @db.Text
+  target         String? @db.Text
+  indicator      String? @db.Text
+  verification   String? @db.Text
+  /// Período após o fim do projeto (ex.: "12 meses após o encerramento").
+  periodAfterEnd String?
+  notes          String? @db.Text
+  order          Int     @default(0)
+
+  impact    LongTermImpact     @relation(fields: [impactId], references: [id], onDelete: Cascade)
+  planItems EvidencePlanItem[]
+
+  @@index([impactId])
+  @@map("impact_follow_up")
+}
+
+enum EvidenceSourceType {
+  ACTIVITY
+  OUTCOME
+  IMPACT
+}
+
+model EvidencePlanItem {
+  id               String             @id @default(cuid())
+  projectId        String
+  sourceType       EvidenceSourceType
+  activityId       String?
+  outcomeId        String?
+  impactId         String?
+  impactFollowUpId String?
+  /// Meta, indicador e verificação são consolidados das etapas aprovadas.
+  target           String?            @db.Text
+  indicator        String?            @db.Text
+  verification     String?            @db.Text
+  /// Campos operacionais detalhados no plano (null = a definir).
+  collectionTiming String?            @db.Text
+  responsible      String?
+  instrument       String?            @db.Text
+  pending          String?            @db.Text
+  order            Int                @default(0)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activity       Activity?        @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  outcome        ExpectedOutcome? @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  impact         LongTermImpact?  @relation(fields: [impactId], references: [id], onDelete: Cascade)
+  impactFollowUp ImpactFollowUp?  @relation(fields: [impactFollowUpId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, order])
+  @@index([activityId])
+  @@index([outcomeId])
+  @@index([impactId])
+  @@index([impactFollowUpId])
+  @@map("evidence_plan_item")
+}
+
+// ---------------------------------------------------------------------------
+// Conversa com o consultor virtual e propostas da IA
+// ---------------------------------------------------------------------------
+
+enum MessageRole {
+  ASSISTANT
+  USER
+}
+
+enum ProposalType {
+  ACTIVITY
+  OUTCOME
+  IMPACT
+  EVIDENCE_PLAN
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+model JourneyConversation {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  /// Estado transitório da conversa (rascunho em construção). Nunca é a fonte
+  /// de verdade da jornada: o conteúdo aprovado vive nas tabelas estruturadas.
+  state       Json?
+  /// Entrada do último turno em que o consultor falhou; permite "Tentar
+  /// novamente" sem repetir a mensagem. Limpa no próximo turno bem-sucedido.
+  failedInput Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages  JourneyMessage[]
+  proposals JourneyProposal[]
+
+  @@map("journey_conversation")
+}
+
+model JourneyMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String       @db.Text
+  stage          JourneyStage
+  /// Ações oferecidas pelo consultor (metadados de interface).
+  actions        Json?
+  proposalId     String?
+  authorId       String?
+  /// Marca respostas produzidas pelo provedor de teste (mock).
+  isMock         Boolean      @default(false)
+  /// Versão das instruções enviadas ao modelo (JOURNEY_PROMPT_VERSION); null no mock. Só auditoria.
+  promptVersion  String?
+  createdAt      DateTime     @default(now())
+
+  conversation JourneyConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  proposal     JourneyProposal?    @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  author       User?               @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@map("journey_message")
+}
+
+model JourneyProposal {
+  id             String         @id @default(cuid())
+  conversationId String
+  projectId      String
+  stage          JourneyStage
+  type           ProposalType
+  /// Conteúdo estruturado da proposta (validado por schema no servidor).
+  payload        Json
+  status         ProposalStatus @default(PENDING)
+  isMock         Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  decidedAt      DateTime?
+  decidedById    String?
+
+  conversation JourneyConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  decidedBy    User?               @relation("ProposalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  messages     JourneyMessage[]
+
+  @@index([projectId, status])
+  @@index([conversationId])
+  @@map("journey_proposal")
+}
+
+enum AiUsageStatus {
+  SUCCESS
+  INCOMPLETE
+  REFUSED
+  INVALID_RESPONSE
+  TIMEOUT
+  API_ERROR
+}
+
+/// Metadados técnicos de cada chamada ao provedor de IA externo. Não guarda a
+/// chave, o conteúdo das mensagens nem custos.
+model AiUsage {
+  id           String        @id @default(cuid())
+  projectId    String
+  model        String        @db.VarChar(100)
+  inputTokens  Int           @default(0)
+  outputTokens Int           @default(0)
+  status       AiUsageStatus
+  createdAt    DateTime      @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("ai_usage")
+}

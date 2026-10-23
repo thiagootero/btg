@@ -1,0 +1,19 @@
+# Proxy reverso da Jornada de Impacto.
+# O domínio vem da variável APP_DOMAIN (.env). Com um domínio público apontando
+# para o servidor (registro DNS A/AAAA), o Caddy emite e renova o certificado
+# HTTPS automaticamente.
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy app:3000 {
+		health_uri /api/health
+		health_interval 30s
+	}
+}
