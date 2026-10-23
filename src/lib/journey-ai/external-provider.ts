@@ -180,7 +180,7 @@ export function describeInput(input: JourneyAIInput): string {
 const NOTHING_CHANGED = "Nada foi alterado no projeto.";
 
 /** Converte falhas da API em mensagens claras, sem detalhes técnicos nem a chave. */
-function toProviderError(error: unknown): JourneyAIProviderError {
+export function toProviderError(error: unknown): JourneyAIProviderError {
   if (error instanceof JourneyAIProviderError) return error;
   if (error instanceof APIConnectionTimeoutError) {
     return new JourneyAIProviderError(

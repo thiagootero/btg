@@ -8,6 +8,8 @@ import { ProjectFiltersForm } from "@/components/projects/project-filters";
 import { ProjectCard } from "@/components/projects/project-card";
 import { EmptyProjects } from "@/components/projects/empty-projects";
 import { requireUser } from "@/lib/auth/session";
+import { PublicLinkActions } from "@/components/results/public-link-actions";
+import { publicPath } from "@/lib/results/public";
 import { listProjects } from "@/server/projects";
 import { prisma } from "@/lib/db";
 
@@ -57,6 +59,15 @@ async function ProjectsContent({ searchParams }: { searchParams: PageProps<"/pro
               : `Projetos de ${user.memberships.map((m) => m.organizationName).join(", ")}.`}
           </p>
         </div>
+        {user.memberships.map((m) => (
+          <PublicLinkActions
+            key={m.organizationId}
+            path={publicPath(m.organizationId)}
+            label={
+              user.memberships.length > 1 ? `Página pública · ${m.organizationName}` : "Página pública da organização"
+            }
+          />
+        ))}
         {canCreate && (
           <Button asChild size="lg">
             <Link href="/projetos/novo">

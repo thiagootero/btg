@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileText, MessageSquare, PanelRightClose, PanelRightOpen } from "lucide-react";
+import {
+  ArrowLeft,
+  ClipboardCheck,
+  FileText,
+  Globe,
+  MessageSquare,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -19,6 +27,7 @@ import { StageContent, type DeleteTarget, type EditTarget } from "@/components/j
 import { JourneyStepper } from "@/components/journey/stage-nav";
 import { useJourney, type JourneyController } from "@/components/journey/use-journey";
 import { stageApprovalBlockers } from "@/lib/journey/progress";
+import { publicPath } from "@/lib/results/public";
 import {
   STAGE_LABELS,
   VISIBLE_STAGES,
@@ -99,6 +108,16 @@ export function JourneyWorkspace({ initial }: { initial: JourneyViewState }) {
           </div>
           {project.isDemo && <Badge variant="outline">Demonstração</Badge>}
           <div className="flex gap-1">
+            <Button asChild variant="ghost" size="sm" aria-label="Resultados do projeto">
+              <Link href={`/projetos/${project.id}/resultados`}>
+                <ClipboardCheck aria-hidden /> <span className="hidden md:inline">Resultados</span>
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" aria-label="Página pública do projeto (abre em nova aba)">
+              <a href={publicPath(project.organizationId, project.id)} target="_blank" rel="noopener noreferrer">
+                <Globe aria-hidden /> <span className="hidden md:inline">Página pública</span>
+              </a>
+            </Button>
             <Button asChild variant="ghost" size="sm" aria-label="Relatório geral">
               <Link href={`/projetos/${project.id}/relatorio`}>
                 <FileText aria-hidden /> <span className="hidden md:inline">Relatório</span>
@@ -276,11 +295,18 @@ function SummaryView({ journey }: { journey: JourneyController }) {
             Tudo o que foi construído e aprovado para o projeto {snapshot.project.name}.
           </p>
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/projetos/${snapshot.project.id}/relatorio`}>
-            <FileText aria-hidden /> Ver relatório
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm">
+            <Link href={`/projetos/${snapshot.project.id}/resultados`}>
+              <ClipboardCheck aria-hidden /> Registrar resultados
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/projetos/${snapshot.project.id}/relatorio`}>
+              <FileText aria-hidden /> Ver relatório
+            </Link>
+          </Button>
+        </div>
       </header>
       {VISIBLE_STAGES.map((stage, i) => (
         <section key={stage} aria-labelledby={`resumo-${stage}`} className="space-y-3">

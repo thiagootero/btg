@@ -311,3 +311,40 @@ ou “Modo IA: OpenAI”, para confirmar qual provedor está respondendo.
 4. Rodar `npm run test` (os testes de contrato continuam valendo, sem custo) e
    testar um projeto completo em homologação.
 5. Reiniciar: `docker compose up -d --build app`.
+
+## Resultados do Projeto (texto técnico)
+
+Depois da Jornada aprovada, a área `/projetos/[id]/resultados` registra o
+resultado alcançado em cada item previsto: atividades (Etapa 2), resultados de
+médio prazo (Etapa 3, obrigatórios para a síntese) e impacto (Etapa 4 — cada
+acompanhamento ou, sem eles, o próprio impacto). A IA é usada em dois momentos,
+com o mesmo `AI_PROVIDER` (mock ou OpenAI):
+
+1. **Formulário personalizado** — ao aprovar a última etapa da Jornada, uma única
+   chamada (em segundo plano, via `after()`) redige as perguntas de cada item
+   (`RESULTS_FORM_PROMPT`). Roda uma vez por avaliação (`formStatus`); se a IA
+   falhar ou responder fora do schema, o item usa o formulário padrão
+   (`formSource = "fallback"`). Projetos concluídos antes desta funcionalidade
+   geram o formulário no primeiro acesso à tela.
+2. **Texto técnico** — o botão “Organizar resultado com a IA” de cada item.
+
+```
+src/lib/results/            # itens por nível, formulário, tipos de indicador, percentual, schemas, status, visão
+src/lib/results-ai/
+  system-prompt.ts          # regras do texto técnico e do formulário (RESULTS_PROMPT_VERSION)
+  mock-provider.ts          # APENAS SIMULAÇÃO, texto montado por modelo fixo
+  external-provider.ts      # OpenAI (Structured Outputs: {"texto": "..."})
+  text-guards.ts            # travas do servidor: números e termos exagerados
+src/server/results/service.ts
+```
+
+- Vai à IA somente: projeto, nível e item previsto, meta, indicador, linha de base
+  (quando houver), valores registrados, percentual calculado pelo sistema,
+  “O que esse resultado mostra na prática?” e o contexto opcional. O meio de
+  verificação **não** é enviado.
+- O percentual é sempre calculado pelo servidor. Qualquer texto (mock ou OpenAI)
+  com número que não veio da organização, com número registrado alterado ou com
+  termos como “transformou”/“comprovou” não sustentados pelos dados é descartado.
+- A resposta é só uma proposta (`AI_PROPOSED`): a organização aprova, edita,
+  descarta ou gera nova versão. Alterar os dados registrados invalida o texto
+  anterior. Nada é público ou aprovado automaticamente.
