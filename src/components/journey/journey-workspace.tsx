@@ -65,8 +65,13 @@ export function JourneyWorkspace({ initial }: { initial: JourneyViewState }) {
   }
 
   // O contexto vem do formulário do projeto e é aprovado direto na tela, sem
-  // conversa; nas demais etapas o consultor fica sempre ao lado.
+  // conversa. Nas etapas construídas com o consultor, a conversa ocupa o centro
+  // e a síntese da etapa abre sob demanda; no resumo, a conversa fica ao lado.
   const showChat = selectedStep !== "CONTEXT";
+  const chatStage = showChat && selectedStep !== "SUMMARY";
+  const showSideChat = showChat && !chatStage;
+  const [stagePanelOpen, setStagePanelOpen] = useState(false);
+  const [stageSheetOpen, setStageSheetOpen] = useState(false);
 
   // Primeira vez que a conversa aparece (com o contexto já aprovado): o
   // consultor a abre.
@@ -123,7 +128,7 @@ export function JourneyWorkspace({ initial }: { initial: JourneyViewState }) {
                 <FileText aria-hidden /> <span className="hidden md:inline">Relatório</span>
               </Link>
             </Button>
-            {showChat && (
+            {showSideChat && (
               <Button
                 variant="outline"
                 size="sm"
@@ -139,23 +144,106 @@ export function JourneyWorkspace({ initial }: { initial: JourneyViewState }) {
 
         <JourneyStepper journey={journey} selectedStep={selectedStep} onSelectStep={setSelectedStep} />
 
-        <main className="min-h-0 flex-1 overflow-y-auto" aria-label="Informações da etapa">
-          {selectedStep === "SUMMARY" ? (
-            <SummaryView journey={journey} />
-          ) : (
-            <StageView
-              stage={selectedStep}
-              journey={journey}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onReopen={setReopenStage}
-            />
-          )}
-        </main>
+        {chatStage ? (
+          <div className="flex min-h-0 flex-1">
+            {/* Conversa no centro: é ali que a etapa é construída */}
+            <main className="flex min-w-0 flex-1 flex-col bg-sidebar" aria-label="Conversa da etapa">
+              <div className="flex items-center gap-2 border-b bg-card px-4 py-2 sm:px-6">
+                <h2 className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold">
+                  <MessageSquare className="size-4 shrink-0 text-primary" aria-hidden />
+                  <span className="truncate">Consultor virtual · {STAGE_LABELS[selectedStep]}</span>
+                  <AIModeBadge mode={journey.view.aiMode} />
+                </h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="lg:hidden"
+                  onClick={() => setStageSheetOpen(true)}
+                  aria-label="Abrir síntese da etapa"
+                >
+                  <PanelRightOpen aria-hidden /> Síntese
+                </Button>
+                <Button
+                  variant={stagePanelOpen ? "secondary" : "outline"}
+                  size="sm"
+                  className="hidden lg:inline-flex"
+                  onClick={() => setStagePanelOpen((open) => !open)}
+                  aria-pressed={stagePanelOpen}
+                  aria-label={stagePanelOpen ? "Fechar síntese da etapa" : "Abrir síntese da etapa"}
+                >
+                  {stagePanelOpen ? <PanelRightClose aria-hidden /> : <PanelRightOpen aria-hidden />}
+                  Síntese da etapa
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1">
+                <ChatPanel journey={journey} onEditProposal={handleEditProposal} />
+              </div>
+            </main>
+
+            {stagePanelOpen && (
+              <aside
+                className="hidden min-h-0 w-[38%] min-w-96 shrink-0 overflow-y-auto border-l bg-background lg:block"
+                aria-label="Síntese da etapa"
+              >
+                <StageView
+                  stage={selectedStep}
+                  journey={journey}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onReopen={setReopenStage}
+                />
+              </aside>
+            )}
+          </div>
+        ) : (
+          <main className="min-h-0 flex-1 overflow-y-auto" aria-label="Informações da etapa">
+            {selectedStep === "SUMMARY" ? (
+              <SummaryView journey={journey} />
+            ) : (
+              <StageView
+                stage={selectedStep}
+                journey={journey}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onReopen={setReopenStage}
+              />
+            )}
+          </main>
+        )}
       </div>
 
-      {/* Conversa em toda a altura, recolhível para dar mais espaço à etapa */}
-      {showChat &&
+      {/* Síntese da etapa no celular */}
+      {chatStage && (
+        <Sheet open={stageSheetOpen} onOpenChange={setStageSheetOpen}>
+          <SheetContent side="right" className="flex w-[90vw] max-w-md flex-col gap-0 p-0">
+            <SheetHeader className="border-b">
+              <SheetTitle>Síntese da etapa</SheetTitle>
+              <SheetDescription>O que já foi aprovado nesta etapa.</SheetDescription>
+            </SheetHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <StageView
+                stage={selectedStep}
+                journey={journey}
+                onEdit={(target) => {
+                  setStageSheetOpen(false);
+                  handleEdit(target);
+                }}
+                onDelete={(target) => {
+                  setStageSheetOpen(false);
+                  handleDelete(target);
+                }}
+                onReopen={(stage) => {
+                  setStageSheetOpen(false);
+                  setReopenStage(stage);
+                }}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {/* Conversa em toda a altura, recolhível para dar mais espaço ao resumo */}
+      {showSideChat &&
         (chatCollapsed ? (
           <aside className="hidden w-12 shrink-0 flex-col items-center border-l bg-sidebar py-3 lg:flex">
             <Button
@@ -200,7 +288,7 @@ export function JourneyWorkspace({ initial }: { initial: JourneyViewState }) {
         ))}
 
       {/* Conversa recolhível no celular */}
-      <Sheet open={showChat && chatOpen} onOpenChange={setChatOpen}>
+      <Sheet open={showSideChat && chatOpen} onOpenChange={setChatOpen}>
         <SheetContent side="right" className="flex w-[90vw] max-w-md flex-col gap-0 p-0">
           <SheetHeader className="border-b">
             <SheetTitle className="flex items-center gap-2">

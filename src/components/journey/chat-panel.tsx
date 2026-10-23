@@ -72,7 +72,7 @@ export function ChatPanel({
   return (
     <section aria-label="Conversa com o consultor virtual" className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6" aria-live="polite" aria-relevant="additions">
-        <ol className="mx-auto flex max-w-2xl flex-col gap-5">
+        <ol className="mx-auto flex max-w-3xl flex-col gap-6">
           {view.messages.map((m) => (
             <li key={m.id}>
               <Message
@@ -101,7 +101,7 @@ export function ChatPanel({
       </div>
 
       <div className="border-t bg-card px-4 py-3 sm:px-6">
-        <div className="mx-auto max-w-2xl space-y-2">
+        <div className="mx-auto max-w-3xl space-y-2">
           {(journey.error || view.canRetry) && (
             <FormAlert>
               <div className="space-y-2">
@@ -176,7 +176,7 @@ export function ChatPanel({
 function UserBubble({ text }: { text: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-base leading-relaxed text-primary-foreground">
         <span className="sr-only">Você: </span>
         {text}
       </div>
@@ -209,7 +209,7 @@ function Message({
         <Bot className="size-4" />
       </span>
       <div className="min-w-0 flex-1 space-y-3">
-        <div className="rounded-2xl rounded-tl-sm border bg-card px-4 py-3 text-sm leading-relaxed shadow-xs">
+        <div className="rounded-2xl rounded-tl-sm border bg-card px-5 py-4 text-base leading-relaxed shadow-xs">
           <span className="sr-only">Consultor: </span>
           <RichText text={message.content} />
         </div>
